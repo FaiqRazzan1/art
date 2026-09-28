@@ -77,12 +77,12 @@ pre{background:#111;color:#e5e5e5;padding:12px;border-radius:8px;overflow:auto;f
 
 <div class="card">
 <h2>1b. Ambil artikel dari URL web lain</h2>
-<p class="small">Tempel link artikel (contoh: <code>https://godsseo.net/id/jasa-pembuatan-website-seo</code>) → tool fetch HTML-nya, ekstrak judul/meta/heading/isi/gambar/link jadi markdown, lalu otomatis diaudit. Catatan: browser memblokir fetch lintas-domain (CORS) — jika fetch langsung gagal, centang proxy atau simpan halaman sebagai .html lalu pakai Upload.</p>
+<p class="small">Tempel link artikel (contoh: <code>https://baby.bcb.dpdns.org/newborn-baby-parenting-tips.html</code>) → tool otomatis mencoba semua jalur: proxy server → langsung → 3 proxy publik, lalu mengekstrak judul/meta/isi jadi markdown dan langsung diaudit. Situs di belakang Cloudflare tanpa CORS (seperti contoh di atas) tetap bisa diambil via proxy server.</p>
 <label for="url">URL artikel</label>
 <input id="url" placeholder="https://contoh.com/artikel" inputmode="url">
 <div>
 <button id="btnFetch">Ambil &amp; Audit Artikel</button>
-<button id="btnFetchProxy" class="ghost">Ambil via Proxy CORS</button>
+<button id="btnFetchProxy" class="ghost">Ambil via Proxy Publik Saja</button>
 </div>
 <div id="fetchStatus" class="small" aria-live="polite">Belum mengambil URL.</div>
 </div>
@@ -570,23 +570,57 @@ function pickArticleRoot(doc){
   return best;
 }
 
-async function fetchAndAuditArticle(rawUrl, viaProxy){
+// Coba semua jalur pengambilan berurutan sampai berhasil:
+// 1) proxy server same-origin /api/fetch (lolos CORS, andalan di Vercel),
+// 2) fetch langsung, 3-5) rantai proxy publik. Kembalikan {ok, html, via} atau {ok:false, errs}.
+async function tryFetchText(url, forcePublic){
+  const chain = [];
+  if(!forcePublic) chain.push({name:'proxy server', url:'/api/fetch?url='+encodeURIComponent(url)});
+  if(!forcePublic) chain.push({name:'langsung', url});
+  chain.push({name:'proxy allorigins', url:'https://api.allorigins.win/raw?url='+encodeURIComponent(url)});
+  chain.push({name:'proxy corsproxy.io', url:'https://corsproxy.io/?url='+encodeURIComponent(url)});
+  chain.push({name:'proxy codetabs', url:'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(url)});
+  const errs = [];
+  for(const a of chain){
+    try{
+      const ctrl = new AbortController();
+      const t = setTimeout(()=>ctrl.abort(), 25000);
+      const res = await fetch(a.url, {signal: ctrl.signal});
+      clearTimeout(t);
+      if(!res.ok){ errs.push(a.name+': HTTP '+res.status); continue; }
+      const ct = res.headers.get('content-type') || '';
+      const txt = await res.text();
+      if(ct.includes('application/json')){  // balasan error JSON (mis. dari /api atau proxy)
+        try{ errs.push(a.name+': '+((JSON.parse(txt)).error || ('HTTP '+res.status))); }
+        catch(e){ errs.push(a.name+': balasan bukan HTML'); }
+        continue;
+      }
+      if(!/<html|<!doctype/i.test(txt.slice(0, 3000)) && txt.length < 800){ errs.push(a.name+': balasan bukan HTML'); continue; }
+      return {ok:true, html:txt, via:a.name};
+    }catch(e){
+      errs.push(a.name+': '+((e && e.name === 'AbortError') ? 'timeout 25 dtk' : 'diblokir CORS / jaringan ('+((e && e.message) || e)+')'));
+    }
+  }
+  return {ok:false, errs};
+}
+
+async function fetchAndAuditArticle(rawUrl, forcePublic){
   const status=$('fetchStatus');
   let url=(rawUrl||'').trim();
   if(!url){ status.textContent='Isi URL dulu.'; return; }
   if(!/^https?:\/\//i.test(url)) url='https://'+url;
   // Anti mixed-content: di hosting HTTPS (mis. Vercel), browser memblokir fetch ke http://.
-  // Naikkan otomatis ke https:// agar perilaku online sama dengan lokal.
   if(window.location && window.location.protocol === 'https:' && /^http:\/\//i.test(url)){
     url = url.replace(/^http:\/\//i, 'https://');
-    status.textContent = 'Halaman dibuka via HTTPS — URL target otomatis dinaikkan ke https:// agar tidak diblokir browser. ';
   }
-  const target=viaProxy?'https://api.allorigins.win/raw?url='+encodeURIComponent(url):url;
-  status.textContent=(viaProxy?'Mengambil via proxy CORS: ':'Mengambil langsung: ')+url+' …';
+  status.textContent='Mengambil '+url+' … (mencoba: proxy server → langsung → 3 proxy publik)';
+  const r = await tryFetchText(url, forcePublic);
+  if(!r.ok){
+    status.textContent='Gagal dari semua jalur: '+r.errs.join(' | ')+'. Jalan pintas: buka URL di browser → Simpan halaman (Ctrl+S) → Upload file .html di bagian Input, atau copy-paste isi artikel.';
+    return;
+  }
   try{
-    const res=await fetch(target);
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const html=await res.text();
+    const html=r.html;
     const doc=new DOMParser().parseFromString(html,'text/html');
     // Judul: og:title -> <title> -> H1 pertama
     const h1el=doc.querySelector('h1');
@@ -599,10 +633,10 @@ async function fetchAndAuditArticle(rawUrl, viaProxy){
     try{ if($('site') && !$('site').value.trim()) $('site').value=new URL(url).origin; }catch(e){}
     // Simpan sumber sebagai komentar markdown + isi artikel
     $('content').value=`<!-- Sumber: ${url} -->\n\n`+md;
-    status.textContent=`Berhasil: "${title.slice(0,80)}" — ${hCount} heading, ${imgCount} gambar diekstrak dari ${url}. Menjalankan audit…`;
+    status.textContent=`Berhasil via ${r.via}: "${title.slice(0,80)}" — ${hCount} heading, ${imgCount} gambar diekstrak dari ${url}. Menjalankan audit…`;
     runAudit();
   }catch(e){
-    status.textContent='Gagal fetch ('+e.message+'). Kemungkinan diblokir CORS. Coba "Ambil via Proxy CORS", atau buka URL di browser → Simpan sebagai HTML → Upload .md/.html di bagian Input.';
+    status.textContent='Gagal memproses HTML ('+e.message+'). Coba buka URL di browser → Simpan sebagai HTML → Upload file .html di bagian Input.';
   }
 }
 $('btnFetch').onclick=()=>fetchAndAuditArticle($('url').value,false);
