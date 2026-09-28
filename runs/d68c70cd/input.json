@@ -1,0 +1,5 @@
+{
+  "task": "Siapkan website SEO Content Checker (index.html tunggal di cwd) untuk deploy ke Vercel tanpa bug dan tanpa perbedaan data vs lokal: tambahkan vercel.json yang aman (static, header parity, tanpa CSP yang merusak), perbaiki bug khusus-online (mixed-content http di halaman https, CORS fetch, proxy), pastikan export Clean Markdown tetap valid Obsidian Flavored Markdown (frontmatter, wikilink, callout, tanpa HTML). Verifikasi: serve lokal dan samakan perilaku, uji audit 100 Pass.",
+  "mode": "execute",
+  "run_id": "d68c70cd"
+}

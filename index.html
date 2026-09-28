@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEO Content Checker — Validasi Artikel sebelum Publish</title>
+<meta name="description" content="Tool offline untuk cek H1/H2, kebersihan markdown, SEO dasar, dan export note Obsidian yang bersih.">
+<style>
+/* Gaya minimal, offline, tanpa dependency. */
+:root{--bg:#f7f7f2;--card:#fff;--ink:#1d1d1f;--mut:#6b7280;--ok:#15803d;--warn:#b45309;--fail:#b91c1c;--line:#e5e7eb}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-text-size-adjust:100%}
+img{max-width:100%;height:auto}
+header{padding:20px;max-width:1100px;margin:auto}
+header h1{font-size:28px;margin:0 0 8px}
+main{max-width:1100px;margin:auto;padding:0 20px 40px;display:grid;gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;min-width:0}
+label{display:block;font-weight:600;margin:10px 0 4px}
+input,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font-size:14px;max-width:100%}
+textarea{min-height:220px;font-family:ui-monospace,monospace}
+.row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+button{padding:10px 14px;border-radius:8px;border:1px solid var(--line);background:#111;color:#fff;cursor:pointer;margin:4px 4px 0 0;min-height:44px;font-size:15px;touch-action:manipulation}
+button.ghost{background:#fff;color:#111}
+button:active{transform:scale(.98)}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{border:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px}
+.pass{color:var(--ok);font-weight:700}.warn{color:var(--warn);font-weight:700}.fail{color:var(--fail);font-weight:700}
+pre{background:#111;color:#e5e5e5;padding:12px;border-radius:8px;overflow:auto;font-size:13px;max-width:100%;white-space:pre}
+.issue-line{background:#fef3c7}.err-line{background:#fee2e2}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:800px){
+  .row,.grid2{grid-template-columns:1fr}
+  header{padding:16px 12px}
+  header h1{font-size:22px}
+  main{padding:0 12px 28px;gap:12px}
+  .card{padding:12px;border-radius:10px}
+  h2{font-size:18px}
+  /* Cegah auto-zoom iOS: input minimal 16px */
+  input,textarea{font-size:16px}
+  textarea{min-height:180px}
+  /* Tombol full-width agar mudah disentuh */
+  .card button{width:100%;margin:6px 0 0}
+  /* Tabel scroll horizontal, tidak merusak layout */
+  .scroll table{min-width:620px;font-size:13px}
+  th,td{padding:6px}
+  pre{font-size:12px;padding:10px}
+  #score{font-size:15px;overflow-wrap:anywhere}
+  #preview{overflow-wrap:anywhere}
+}
+.small{color:var(--mut);font-size:13px}
+</style>
+</head>
+<body>
+<header>
+<h1>SEO Content Checker</h1>
+<p class="small">Tempel artikel (teks / markdown / .md) <b>atau tempel URL artikel web lain</b> → cek H1/H2, kebersihan syntax <code>* &gt; #</code>, SEO dasar → export sebagai note Obsidian yang bersih. 100% client-side, tanpa backend.</p>
+</header>
+<main>
+<div class="card">
+<h2>1. Input</h2>
+<div class="row">
+<div><label for="title">Judul (H1 / 30–60 karakter)</label><input id="title" placeholder="Contoh: Panduan SEO On-Page untuk Blogger Indonesia"></div>
+<div><label for="meta">Meta description (&lt;160 karakter, opsional)</label><input id="meta" placeholder="Ringkasan singkat artikel…"></div>
+<div><label for="keyword">Keyword fokus</label><input id="keyword" placeholder="contoh: seo on-page"></div>
+</div>
+<div class="row" style="margin-top:12px">
+<div style="grid-column:1/-1"><label for="site">Domain situs (opsional — untuk bedakan link internal vs eksternal; otomatis terisi saat ambil via URL)</label><input id="site" placeholder="https://website-anda.com"></div>
+</div>
+<label for="content">Artikel (markdown)</label>
+<textarea id="content" placeholder="# Judul&#10;&#10;## Subjudul 1&#10;Isi…"></textarea>
+<div>
+<button id="btnAudit">Jalankan Audit</button>
+<button id="btnFile" class="ghost">Upload .md</button>
+<input type="file" id="file" accept=".md,.markdown,.txt,.html" hidden>
+<button id="btnContoh" class="ghost">Muat contoh ideal</button>
+</div>
+</div>
+
+<div class="card">
+<h2>1b. Ambil artikel dari URL web lain</h2>
+<p class="small">Tempel link artikel (contoh: <code>https://godsseo.net/id/jasa-pembuatan-website-seo</code>) → tool fetch HTML-nya, ekstrak judul/meta/heading/isi/gambar/link jadi markdown, lalu otomatis diaudit. Catatan: browser memblokir fetch lintas-domain (CORS) — jika fetch langsung gagal, centang proxy atau simpan halaman sebagai .html lalu pakai Upload.</p>
+<label for="url">URL artikel</label>
+<input id="url" placeholder="https://contoh.com/artikel" inputmode="url">
+<div>
+<button id="btnFetch">Ambil &amp; Audit Artikel</button>
+<button id="btnFetchProxy" class="ghost">Ambil via Proxy CORS</button>
+</div>
+<div id="fetchStatus" class="small" aria-live="polite">Belum mengambil URL.</div>
+</div>
+
+<div class="card">
+<h2>2. Skor &amp; Hasil</h2>
+<div id="score" aria-live="polite">Belum diaudit.</div>
+<div class="scroll"><table id="tabelHasil"><thead><tr><th>Aturan</th><th>Status</th><th>Pesan</th><th>Baris</th></tr></thead><tbody><tr><td colspan="4" class="small">Jalankan audit dulu.</td></tr></tbody></table></div>
+<h3>Highlight baris bermasalah</h3>
+<pre id="highlight">—</pre>
+</div>
+
+<div class="grid2">
+<div class="card">
+<h2>3. Preview HTML</h2>
+<div id="preview" class="small">Preview muncul di sini.</div>
+</div>
+<div class="card">
+<h2>4. Export Obsidian</h2>
+<p class="small">Output valid Obsidian Flavored Markdown: frontmatter YAML + wikilink opsional + callout issue. Tanpa HTML kotor.</p>
+<button id="btnCopyClean">Copy Clean Markdown</button>
+<button id="btnDl" class="ghost">Download .md</button>
+<button id="btnCopyLap" class="ghost">Copy Laporan Audit</button>
+<h3>Clean Markdown</h3><pre id="cleanOut">—</pre>
+<h3>Laporan Audit (markdown)</h3><pre id="lapOut">—</pre>
+</div>
+</div>
+
+<div class="card">
+<h2>5. Tabel Aturan</h2>
+<div class="scroll">
+<table>
+<thead><tr><th>Aturan</th><th>Pass Criteria</th><th>Fail Message</th></tr></thead>
+<tbody>
+<tr><td>H1 tepat 1</td><td>tepat 1 baris H1</td><td>H1 harus tepat 1 (ditemukan {n})</td></tr>
+<tr><td>H2 minimal 2</td><td>≥ 2 H2</td><td>H2 minimal 2 (ditemukan {n})</td></tr>
+<tr><td>Hierarki heading</td><td>loncat level ≤ 1</td><td>Loncat hierarki {prev}→{cur} di baris {ln}</td></tr>
+<tr><td>Judul 30–60 char</td><td>30 ≤ len ≤ 60</td><td>Panjang judul {n} karakter, harus 30–60</td></tr>
+<tr><td>Meta &lt;160</td><td>kosong (warning) atau ≤160</td><td>Meta {n} karakter, maks 160</td></tr>
+<tr><td>Density 0.8–2.5%</td><td>0.8–2.5%</td><td>Density {d}% di luar 0.8–2.5%</td></tr>
+<tr><td>Word count ≥300</td><td>≥300 kata</td><td>Hanya {n} kata, minimal 300</td></tr>
+<tr><td>Kalimat &gt;20 kata</td><td>≤25% kalimat panjang</td><td>{p}% kalimat &gt;20 kata (maks 25%)</td></tr>
+<tr><td>Passive voice</td><td>≤10% kalimat pasif</td><td>{p}% kalimat pasif (maks 10%)</td></tr>
+<tr><td>Link internal/eksternal</td><td>≥1 tiap jenis (warning)</td><td>Tidak ada link internal / eksternal</td></tr>
+<tr><td>Alt-text gambar</td><td>semua gambar ada alt</td><td>Gambar tanpa alt di baris {ln}</td></tr>
+<tr><td>Syntax kasar</td><td>tidak ada sisa kasar</td><td>Ditemukan syntax kasar di baris {ln}</td></tr>
+<tr><td>HTML kotor</td><td>tanpa div/span/font/style</td><td>HTML kotor di baris {ln}</td></tr>
+</tbody>
+</table>
+</div>
+<h2>6. Regex checker (ditampilkan + dijelaskan)</h2>
+<pre id="regexList">Lihat kode sumber auditArticle() — semua regex didokumentasikan di komentar.</pre>
+</div>
+</main>
+
+<script>
+/* ============================================================
+ * SEO Content Checker — vanilla JS, offline, tanpa dependency.
+ * Fungsi utama: auditArticle(content, opts): Report
+ * ============================================================ */
+
+// Kumpulan regex (ditampilkan di UI + dijelaskan singkat).
+const REGEX = {
+  heading_md: /^(#{1,6})\s+\S/,              // heading markdown valid '#..###### ' (cek per baris)
+  heading_many: /^\s*#{7,}\s/,               // 7+ '#' bukan heading valid = kasar
+  h1_nospace: /^#(?!#|\s)/,                  // '#' tanpa spasi di awal baris = kasar
+  html_h: /<h([1-6])[^>]*>([\s\S]*?)<\/h\1>/gi, // heading HTML <h1>..</h1>
+  md_link: /\[([^\]]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g, // link markdown [teks](url)
+  empty_link: /\[\s*\]\(\s*\)/,              // []() kosong = kasar
+  link_no_url: /\[[^\]]+\]\(\s*\)/,          // [teks]() tanpa URL = kasar
+  md_img: /!\[([^\]]*)\]\(([^)]+)\)/g,       // gambar markdown ![alt](src)
+  img_empty_alt: /!\[\s*\]\([^)]+\)/,        // gambar tanpa alt = fail
+  wiki: /\[\[([^\]]+)\]\]/g,                 // wikilink Obsidian = link internal valid
+  bare_url: /(https?:\/\/[^\s)<\]"']+)/gi,   // URL telanjang (dihitung setelah link md dibuang)
+  html_a: /<a\b[^>]*href=["']([^"']+)["'][^>]*>/gi, // link HTML
+  html_img: /<img\b[^>]*>/gi,                // gambar HTML (wajib ada alt berisi)
+  html_dirty: /<(div|span|font|style|section|article|iframe)\b[^>]*>/i, // HTML kotor
+  fenced: /```[\s\S]*?```/g,                 // blok kode pagar (diabaikan semua cek)
+  quote_nospace: /^>(?!\s|$)/,               // '>' awal baris tanpa spasi = kasar
+  obs_tag: /^#[A-Za-z][\w/-]*$/,             // tag Obsidian (#seo, #nested/tag) = valid, bukan kasar
+};
+document.getElementById('regexList').textContent =
+  Object.entries(REGEX).map(([k,v]) => k + ' = ' + v.source + '\n  // ' + ({
+    heading_md:'heading markdown valid',heading_many:'7+ pagar = kasar',h1_nospace:'# tanpa spasi = kasar',
+    html_h:'heading HTML',md_link:'link markdown (semua bentuk)',
+    empty_link:'link kosong',link_no_url:'link tanpa URL',md_img:'gambar markdown',
+    img_empty_alt:'gambar tanpa alt',wiki:'wikilink = internal valid',bare_url:'URL telanjang',
+    html_a:'link HTML',html_img:'gambar HTML (cek alt)',html_dirty:'tag HTML kotor',
+    fenced:'blok kode diabaikan',quote_nospace:'> tanpa spasi = kasar',
+    obs_tag:'tag Obsidian valid (dikecualikan)'
+  }[k]||'')).join('\n');
+
+// Token kata (latin + angka, dukung apostrof/tanda hubung dalam kata).
+const WORD_RE = /[A-Za-zÀ-ÿ\u00C0-\u024F0-9\u4e00-\u9fff]+(?:['’\-][A-Za-zÀ-ÿ\u00C0-\u024F0-9\u4e00-\u9fff]+)*/g;
+// Singkatan Indonesia umum (titiknya dilindungi agar kalimat tidak pecah sembarang).
+const ABBR_ID = ['cth','dll','dsb','dst','dr','br','sdr','tn','ny','no','jl','jln','gg','kec','kab','kota','prov','pt','cv','tbk','ud','hlm','tgl','thn','th','bln','prof','ir','sh','mh','spd','mm','stp','rp','rs','saw','swt','ra','as','wt','st','yth'];
+// Kata fungsi berawalan di- yang BUKAN kata kerja pasif.
+const DI_NOUN = new Set(['di','dia','dengan','dalam','dari','dan','demi','dimana','disini','disana','disitu','diantara','dini','ditu','diriku','dirimu','dirinya']);
+// Kata berawalan ter- yang BUKAN kata kerja pasif (kata sifat/statif & fungsi).
+const TER_NONVERB = new Set(['terlalu','terima','terus','terakhir','termasuk','terdiri','terdapat','terkait','tersebut','tetapi','tentang','tengah','tempat','terbuka','tertutup','terbatas','terbesar','terkecil','terbaru','terbaik','terpopuler','termurah','termahal','tersedia','terpercaya','terbukti','terpisah','terpadu','teratur','terletak']);
+function escReg(s){ return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
+// True jika kata adalah kata kerja pasif Indonesia (di-/ter- + akar kata).
+function isPassiveVerb(w){
+  const x = String(w).toLowerCase();
+  if(/^di[a-z]{4,}$/.test(x) && !DI_NOUN.has(x)) return true;   // dibuat, ditulis, dioptimasi
+  if(/^ter[a-z]{4,}$/.test(x) && !TER_NONVERB.has(x)) return true; // tertulis, terbaca
+  return false;
+}
+// Teks bersih untuk hitung kata: buang frontmatter, kode, komentar, URL; sisakan teks link/alt.
+function stripMdForText(md){
+  let s = String(md);
+  s = s.replace(/^---\n[\s\S]*?\n---\n/, ' ');   // frontmatter YAML
+  s = s.replace(REGEX.fenced, ' ');              // blok kode
+  s = s.replace(/<!--[\s\S]*?-->/g, ' ');        // komentar HTML (termasuk <!-- Sumber: -->)
+  s = s.replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1'); // gambar -> alt saja
+  s = s.replace(/\[([^\]]*)\]\([^)]+\)/g, '$1');  // link -> teks saja
+  s = s.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1'); // wikilink -> teks
+  s = s.replace(/<[^>]+>/g, ' ');                // tag HTML sisa
+  s = s.replace(/`[^`]*`/g, ' ');                // inline code
+  return s;
+}
+// Hanya baris paragraf isi (heading, list, quote, tabel, gambar mandiri,
+// kode, komentar, frontmatter dikembalikan sebagai satu teks prosa).
+function proseText(lines){
+  const keep = [];
+  let inF = false, inFm = false;
+  lines.forEach((ln, i) => {
+    if(/^\s*```/.test(ln)){ inF = !inF; return; }
+    if(inF) return;
+    const t = ln.trim();
+    if(i === 0 && t === '---'){ inFm = true; return; }
+    if(inFm){ if(t === '---') inFm = false; return; }
+    if(/^<!--/.test(t)) return;                  // komentar (sumber URL dsb)
+    if(/^\s*#{1,6}\s/.test(ln)) return;          // heading
+    if(/^[=~\-]{3,}\s*$/.test(t)) return;        // underline setext / hr
+    if(/^\s*>\s?/.test(ln)) return;              // quote / callout
+    if(/^\s*([*\-+]|\d+[.)])\s+/.test(ln)) return; // list
+    if(/^\s*\|/.test(ln)) return;                // tabel
+    if(/^\s*!\[[^\]]*\]\([^)]*\)\s*$/.test(t)) return; // gambar mandiri
+    keep.push(t);
+  });
+  return keep.join(' ');
+}
+// Pecah kalimat tahan singkatan ("dll.", "Dr."), desimal ("3.5"), dan inisial ("S.Kom").
+function splitSentences(text){
+  let s = ' ' + String(text).replace(/\s+/g,' ').trim() + ' ';
+  if(!s.trim()) return [];
+  ABBR_ID.forEach(a=>{ s = s.replace(new RegExp('(\\W)(' + a + ')\\.','gi'), '$1$2@@T@@'); });
+  s = s.replace(/(\d)\.(\d)/g, '$1@@T@@$2');     // desimal & ribuan (10.000)
+  s = s.replace(/\b([A-Za-z])\.([A-Za-z])\./g, '$1@@T@@$2@@T@@'); // inisial
+  return s.split(/[.!?…]+["'”’)\]]*\s+/)
+    .map(x => x.replace(/@@T@@/g,'.').replace(/^["'“”‘’(\[]+\s*/, '').trim())
+    .filter(x => x && ((x.match(WORD_RE)||[]).length > 0));
+}
+// Hostname untuk klasifikasi link (tanpa www).
+function hostOf(u, base){
+  if(!u) return '';
+  try{
+    const h = new URL(String(u).trim(), base || 'https://x.invalid').hostname.toLowerCase().replace(/^www\./,'');
+    return (h === 'x.invalid') ? '' : h;
+  }catch(e){ return ''; }
+}
+// Klasifikasi semua link unik: relatif/wikilink/sama-domain = internal; beda domain = eksternal.
+function classifyLinks(content, site, pageUrl){
+  const base = pageUrl || site || undefined;
+  const siteHost = hostOf(site) || hostOf(pageUrl);
+  let int = 0, ext = 0;
+  const seen = new Set();
+  const put = (u) => {
+    if(!u) return;
+    const s = String(u).trim();
+    if(/^(mailto:|tel:|javascript:|data:|#)/i.test(s)) return;
+    if(seen.has(s)) return; seen.add(s);
+    const h = hostOf(s, base);
+    if(!h){ int++; return; }                     // relatif -> internal
+    if(siteHost && h === siteHost) int++;        // sama domain -> internal
+    else if(!siteHost && !/^[a-z][a-z0-9+.-]*:/i.test(s)) int++;
+    else ext++;
+  };
+  const noCode = String(content).replace(REGEX.fenced, ' ');
+  const noMdLink = noCode.replace(/!?\[[^\]]*\]\([^)]+\)/g, ' ');
+  [...noCode.matchAll(REGEX.md_link)].forEach(m => { if(!m[0].startsWith('!')) put(m[2]); });
+  [...noCode.matchAll(REGEX.wiki)].forEach(m => put('wiki:' + m[1]));
+  [...noMdLink.replace(/<[^>]+>/g, ' ').matchAll(REGEX.bare_url)].forEach(m => put(m[1]));
+  [...noCode.matchAll(REGEX.html_a)].forEach(m => put(m[1]));
+  return { int, ext, siteHost };
+}
+
+// Escape HTML untuk preview aman.
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+// Mini renderer markdown -> HTML (tanpa library, hanya untuk preview).
+function renderPreview(md){
+  let h = esc(md);
+  h = h.replace(/^######\s?(.*)$/gm,'<h6>$1</h6>').replace(/^#####\s?(.*)$/gm,'<h5>$1</h5>')
+    .replace(/^####\s?(.*)$/gm,'<h4>$1</h4>').replace(/^###\s?(.*)$/gm,'<h3>$1</h3>')
+    .replace(/^##\s?(.*)$/gm,'<h2>$1</h2>').replace(/^#\s?(.*)$/gm,'<h1>$1</h1>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/(^|[^\*])\*([^*\n]+)\*/g,'$1<em>$2</em>')
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g,'<img alt="$1" src="$2" style="max-width:100%">')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2">$1</a>')
+    .replace(/^&gt;\s?\[!(note|tip|warning|info|danger|success|question|example)\](.*)$/gim,'<blockquote><b>$1</b>$2</blockquote>')
+    .replace(/^&gt;\s?(.*)$/gm,'<blockquote>$1</blockquote>').replace(/`([^`]+)`/g,'<code>$1</code>')
+    .replace(/\n\n/g,'<br><br>');
+  return h;
+}
+
+/**
+ * Audit artikel (akurat).
+ * - Heading: markdown + setext (=== / ---) + HTML, di luar blok kode pagar.
+ * - Word count & kalimat: dari teks bersih (tanpa syntax, URL, kode, komentar).
+ * - Density: frasa utuh (word-boundary) × jumlah kata frasa / total kata.
+ * - Kalimat: tahan singkatan (dll.), desimal (3.5), inisial (S.Kom); hanya prosa.
+ * - Pasif: kata kerja di-/ter- per kalimat (ala Yoast ID, dgn daftar pengecualian).
+ * - Link: relatif/wikilink/sama-domain = internal; beda domain = eksternal.
+ * @param {string} content - isi markdown
+ * @param {object} opts - {title, meta, keyword, site, pageUrl, minH2=2, minWords=300}
+ * @returns {object} Report {score, status, rules[], stats}
+ */
+function auditArticle(content, opts={}){
+  const {title='', meta='', keyword='', site='', pageUrl='', minH2=2, minWords=300} = opts;
+  const lines = content.split('\n');
+  const rules = [];
+  const add = (id, status, message, lineNos=[]) => rules.push({id, status, message, lines: lineNos});
+
+  // Baris dalam blok kode pagar + rentang frontmatter (diabaikan cek syntax/heading).
+  const inFence = new Array(lines.length).fill(false);
+  { let f = false; lines.forEach((ln, i) => { if(/^\s*```/.test(ln)){ f = !f; inFence[i] = true; } else inFence[i] = f; }); }
+  let fmEnd = -1;
+  if(lines[0] && lines[0].trim() === '---'){ for(let i = 1; i < lines.length && i < 30; i++){ if(lines[i].trim() === '---'){ fmEnd = i; break; } } }
+  const skipFm = (i) => fmEnd >= 0 && i <= fmEnd;
+
+  // Teks bersih untuk hitung kata/kalimat.
+  const plain = stripMdForText(content);
+  const wordCount = (plain.match(WORD_RE) || []).length;
+
+  // --- 1. Heading: markdown + setext + HTML (di luar kode & frontmatter) ---
+  let h1 = 0, h2 = 0; const levels = []; const hLines = {};
+  const pushH = (lv, ln) => { levels.push({lv, ln}); if(lv === 1) h1++; if(lv === 2) h2++; (hLines[lv] = hLines[lv] || []).push(ln); };
+  lines.forEach((ln, i) => {
+    if(inFence[i] || skipFm(i)) return;
+    const m = ln.match(/^\s*(#{1,6})\s+\S/);
+    if(m) pushH(m[1].length, i + 1);
+  });
+  for(let i = 0; i < lines.length - 1; i++){           // setext: teks + underline === / ---
+    if(inFence[i] || inFence[i+1] || skipFm(i)) continue;
+    const cur = lines[i], nxt = lines[i+1].trim();
+    if(!cur.trim() || /^\s*#{1,6}\s/.test(cur) || /^<!--/.test(cur.trim())) continue;
+    if(/^[=]{2,}\s*$/.test(nxt)) pushH(1, i + 1);
+    else if(/^[-]{2,}\s*$/.test(nxt) && !/^\s*([*\-+]|\d+[.)])\s+/.test(cur)) pushH(2, i + 1);
+  }
+  const textNoFence = lines.filter((_, i) => !inFence[i]).join('\n');
+  [...textNoFence.matchAll(REGEX.html_h)].forEach(m => { const lv = +m[1]; levels.push({lv, ln: 'html'}); if(lv === 1) h1++; if(lv === 2) h2++; });
+  add('h1-tepat-1', h1 === 1 ? 'pass' : 'fail', h1 === 1 ? 'H1 tepat 1.' : `H1 harus tepat 1 (ditemukan ${h1}).`, hLines[1] || []);
+  add('h2-min', h2 >= minH2 ? 'pass' : 'warning', h2 >= minH2 ? `H2 = ${h2}, memenuhi minimal ${minH2}.` : `H2 minimal ${minH2} (ditemukan ${h2}).`, hLines[2] || []);
+  const ordered = levels.filter(l => typeof l.ln === 'number').sort((a, b) => a.ln - b.ln);
+  const jumps = [];
+  for(let i = 1; i < ordered.length; i++){ if(ordered[i].lv - ordered[i-1].lv > 1) jumps.push(ordered[i].ln); }
+  add('hierarki', jumps.length === 0 ? 'pass' : 'warning', jumps.length === 0 ? 'Hierarki rapi.' : `Loncat hierarki di baris: ${jumps.join(', ')}.`, jumps);
+
+  // --- 2. Kebersihan syntax kasar (di luar kode & frontmatter) ---
+  const kasar = [];
+  const have = (n, why) => { if(!kasar.find(k => k.n === n)) kasar.push({n, why}); };
+  lines.forEach((ln, i) => {
+    if(inFence[i] || skipFm(i)) return;
+    const n = i + 1, t = ln.trim();
+    if(REGEX.heading_many.test(ln)) have(n, 'tanda # berlebih (maks 6)');
+    else if(REGEX.h1_nospace.test(t) && !REGEX.obs_tag.test(t)) have(n, 'tanda # tanpa spasi');
+    if(REGEX.quote_nospace.test(t)) have(n, 'tanda > tanpa spasi');
+    if(REGEX.empty_link.test(ln) || REGEX.link_no_url.test(ln)) have(n, 'link kosong / tanpa URL');
+    if(/!\[[^\]]*\]\s*$/.test(ln)) have(n, 'gambar tanpa (url)');
+    // Backtick tak berpasangan per baris (setelah span kode valid dibuang).
+    const noCode = ln.replace(/``[^`]*``/g, '').replace(/`[^`\n]+`/g, '');
+    if(noCode.includes('`')) have(n, 'backtick tak berpasangan');
+    // Asterisk menggantung: buang bold/italic valid, marker list, hr, matematika.
+    let tmp = ln.replace(/`[^`\n]*`/g, '');            // abaikan isi kode
+    if(/^\s{0,3}([-*_] *){3,}\s*$/.test(tmp)) tmp = ''; // hr *** --- ___
+    tmp = tmp.replace(/^\s*([*\-+]|\d+[.)])\s+/, '');  // marker list
+    tmp = tmp.replace(/\*\*[^*\n]+\*\*/g, '');         // bold valid
+    tmp = tmp.replace(/(^|[^\w*])\*[^*\n]{1,80}\*(?![\w*])/g, '$1'); // italic valid
+    tmp = tmp.replace(/(\d)\s*\*\s*(\d)/g, '$1x$2');   // matematika 5 * 4
+    if(tmp.includes('*')) have(n, 'asterisk menggantung');
+  });
+  add('syntax-kasar', kasar.length === 0 ? 'pass' : 'fail',
+    kasar.length === 0 ? 'Bersih dari markdown kasar.' : `Ditemukan ${kasar.length} baris syntax kasar.`,
+    kasar.map(k => k.n).filter(Boolean));
+
+  // HTML kotor (di luar kode; komentar <!-- --> bukan kotor).
+  const dirty = [];
+  lines.forEach((ln, i) => { if(inFence[i]) return; const t = ln.replace(/<!--[\s\S]*?-->/g, ''); if(REGEX.html_dirty.test(t)) dirty.push(i + 1); });
+  add('html-bersih', dirty.length === 0 ? 'pass' : 'warning', dirty.length === 0 ? 'Tanpa HTML kotor.' : `HTML kotor di baris: ${dirty.join(', ')}.`, dirty);
+
+  // --- 3. SEO dasar ---
+  const tlen = [...title].length;
+  add('judul-30-60', (tlen >= 30 && tlen <= 60) ? 'pass' : (tlen === 0 ? 'fail' : 'warning'),
+    tlen === 0 ? 'Judul kosong.' : `Panjang judul ${tlen} karakter (syarat 30–60).`);
+  const mlen = [...meta].length;
+  add('meta-160', mlen === 0 ? 'warning' : (mlen <= 160 ? 'pass' : 'fail'),
+    mlen === 0 ? 'Meta description kosong (opsional, disarankan ≤160).' : `Meta ${mlen} karakter (maks 160).`);
+  add('word-count', wordCount >= minWords ? 'pass' : 'fail', `Word count ${wordCount} (minimal ${minWords}).`);
+  // Density frasa utuh: kemunculan × kata-frasa / total kata.
+  let density = 0, kwCount = 0;
+  const kwN = keyword.toLowerCase().replace(/[^a-z0-9\u00C0-\u024F]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if(kwN && wordCount > 0){
+    const kwW = kwN.split(' ').length;
+    const tN = ' ' + plain.toLowerCase().replace(/[^a-z0-9\u00C0-\u024F]+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+    kwCount = (tN.match(new RegExp('(?<= )' + escReg(kwN) + '(?= )', 'g')) || []).length;
+    density = +((kwCount * kwW / wordCount) * 100).toFixed(2);
+    add('keyword-density', (density >= 0.8 && density <= 2.5) ? 'pass' : (kwCount === 0 ? 'fail' : 'warning'),
+      `Density "${keyword}" = ${density}% (${kwCount}× / ${wordCount} kata, target 0.8–2.5%).`);
+  } else add('keyword-density', 'warning', 'Keyword fokus belum diisi.');
+  // Readability & pasif dari prosa (bukan heading/list/kode).
+  const sents = splitSentences(proseText(lines));
+  const longS = sents.filter(s => ((s.match(WORD_RE) || []).length > 20)).length;
+  const pLong = sents.length ? Math.round(longS / sents.length * 100) : 0;
+  add('readability', sents.length === 0 ? 'warning' : (pLong <= 25 ? 'pass' : 'warning'),
+    `${pLong}% kalimat >20 kata (${longS}/${sents.length}, batas 25%).`);
+  const pas = sents.filter(s => ((s.match(WORD_RE) || []).some(isPassiveVerb))).length;
+  const pPas = sents.length ? Math.round(pas / sents.length * 100) : 0;
+  add('passive-voice', pPas <= 10 ? 'pass' : 'warning', `${pPas}% kalimat pasif (${pas}/${sents.length}, batas 10%).`);
+  // Link internal vs eksternal (klasifikasi by domain).
+  const {int, ext, siteHost} = classifyLinks(content, site, pageUrl);
+  add('link-internal', int > 0 ? 'pass' : 'warning', int > 0 ? `Link internal OK (${int} unik${siteHost ? ', domain: ' + siteHost : ''}).` : 'Tidak ada link internal / wikilink [[…]].');
+  add('link-eksternal', ext > 0 ? 'pass' : 'warning', ext > 0 ? `Link eksternal OK (${ext} unik).` : 'Tidak ada link eksternal.');
+  // Alt-text: gambar markdown + <img> HTML (di luar blok kode pagar).
+  const imgs = [...textNoFence.matchAll(new RegExp(REGEX.md_img.source, 'g'))];
+  const htmlImgs = [...textNoFence.matchAll(new RegExp(REGEX.html_img.source, 'gi'))];
+  const noAlt = [];
+  lines.forEach((ln, i) => { if(!inFence[i] && REGEX.img_empty_alt.test(ln)) noAlt.push(i + 1); });
+  const htmlNoAlt = htmlImgs.filter(m => { const a = m[0].match(/alt\s*=\s*(["'])(.*?)\1/i); return !a || !a[2].trim(); }).length;
+  const totalImg = imgs.length + htmlImgs.length, badImg = noAlt.length + htmlNoAlt;
+  add('alt-text', badImg === 0 ? 'pass' : 'fail',
+    totalImg === 0 ? 'Tidak ada gambar (netral, lolos).' : (badImg === 0 ? `Semua ${totalImg} gambar ada alt.` : `${badImg} gambar tanpa alt${noAlt.length ? ' di baris ' + noAlt.join(', ') : ''}.`), noAlt);
+
+  // --- 4. Skor 0-100 ---
+  const w = {fail: 0, warning: 0.5, pass: 1};
+  const score = Math.round(rules.reduce((a, r) => a + w[r.status], 0) / rules.length * 100);
+  const fails = rules.filter(r => r.status === 'fail').length;
+  const status = fails > 0 ? 'Fail' : (rules.some(r => r.status === 'warning') ? 'Warning' : 'Pass');
+  return {score, status, rules, stats: {wordCount, density, kwCount, sentences: sents.length, pLong, pPas, ext, int, imgs: totalImg, h1, h2}, kasar};
+}
+
+// Bersihkan konten untuk note Obsidian: normalisasi heading, buang HTML kotor + komentar, rapikan spasi.
+function toCleanMarkdown(content){
+  return content
+    .replace(/<!--[\s\S]*?-->/g,'')              // komentar (mis. <!-- Sumber: -->) dibuang
+    .replace(/<(div|span|font|style|section|article|iframe)[^>]*>/gi,'').replace(/<\/(div|span|font|style|section|article|iframe)>/gi,'')
+    .replace(/^(#{1,6})(?!\s)/gm,'$1 ')       // '#Judul' -> '# Judul'
+    .replace(/^>(?!\s|$)/gm,'> ')             // '>x' -> '> x'
+    .replace(/[ \t]+$/gm,'')                 // trailing space
+    .replace(/\n{3,}/g,'\n\n').trim()+'\n';
+}
+
+function buildCleanNote(title,keyword,content,report){
+  const date=new Date().toISOString().slice(0,10);
+  const tags=['artikel','draft'];
+  if(keyword) tags.push('keyword-'+keyword.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''));
+  const issues=report.rules.filter(r=>r.status!=='pass')
+    .map(r=>`> [!warning] **${r.id}** — ${r.message}`).join('\n');
+  return `---\ntitle: "${title.replace(/"/g,"'")}"\ndate: ${date}\ntags:\n${tags.map(t=>'  - '+t).join('\n')}\nkeyword: "${keyword}"\nscore: ${report.score}\nstatus: ${report.status}\n---\n\n${issues?issues+'\n\n':''}${toCleanMarkdown(content)}`;
+}
+
+function buildAuditReport(title,report){
+  const rows=report.rules.map(r=>`| ${r.id} | ${r.status} | ${r.message} |`).join('\n');
+  return `# Laporan Audit SEO — ${title||'(tanpa judul)'}\n\n**Skor: ${report.score}/100 — ${report.status}**\n\n| Aturan | Status | Pesan |\n|---|---|---|\n${rows}\n\n- Kata: ${report.stats.wordCount}, Kalimat: ${report.stats.sentences}, Density: ${report.stats.density}%\n- H1: ${report.stats.h1}, H2: ${report.stats.h2}, Gambar: ${report.stats.imgs}\n`;
+}
+
+// --- Wiring UI ---
+let lastReport=null;
+const $=id=>document.getElementById(id);
+function runAudit(){
+  const title=$('title').value, meta=$('meta').value, keyword=$('keyword').value, content=$('content').value;
+  const site=$('site') ? $('site').value : '', pageUrl=$('url') ? $('url').value : '';
+  lastReport=auditArticle(content,{title,meta,keyword,site,pageUrl});
+  $('score').innerHTML=`<b>Skor: ${lastReport.score}/100 — <span class="${lastReport.status==='Pass'?'pass':lastReport.status==='Warning'?'warn':'fail'}">${lastReport.status}</span></b>`;
+  $('tabelHasil').querySelector('tbody').innerHTML=lastReport.rules.map(r=>
+    `<tr><td>${r.id}</td><td class="${r.status==='pass'?'pass':r.status==='warning'?'warn':'fail'}">${r.status}</td><td>${esc(r.message)}</td><td>${r.lines.join(', ')||'—'}</td></tr>`).join('');
+  // highlight
+  const bad=new Set(); lastReport.rules.forEach(r=>r.lines.forEach(n=>bad.add(n)));
+  $('highlight').innerHTML=$('content').value.split('\n').map((ln,i)=>{
+    const n=i+1; const cls=bad.has(n)?(lastReport.rules.some(r=>r.status==='fail'&&r.lines.includes(n))?'err-line':'issue-line'):'';
+    return `<span class="${cls}">${String(n).padStart(3,' ')}│ ${esc(ln)}</span>`;
+  }).join('\n');
+  $('preview').innerHTML=renderPreview(content)||'<span class="small">Kosong.</span>';
+  $('cleanOut').textContent=buildCleanNote(title||'Tanpa Judul',keyword,content,lastReport);
+  $('lapOut').textContent=buildAuditReport(title,lastReport);
+}
+$('btnAudit').onclick=runAudit;
+$('btnContoh').onclick=()=>{ $('title').value='Panduan Review Artikel SEO untuk Blogger Indonesia'; $('meta').value='Pelajari cara audit konten sebelum publish: cek heading, keyword, readability, link, dan gambar dalam satu tool.'; $('keyword').value='audit konten'; if($('site')) $('site').value='https://blog-anda.com';
+$('content').value=`# Panduan Review Artikel SEO untuk Blogger Indonesia
+
+Proses audit konten membantu penulis memastikan setiap artikel siap tampil di halaman hasil pencarian. Banyak artikel gagal meraih peringkat bukan karena topik kurang menarik, melainkan karena struktur kurang rapi. Panduan ini merangkum langkah praktis yang bisa kamu ikuti sebelum menekan tombol publish.
+
+## Mengapa Struktur Heading Penting
+
+Heading yang rapi memandu pembaca dari satu gagasan ke gagasan lain tanpa rasa lelah. Satu H1 memberi sinyal **topik utama** kepada mesin pencari dengan gaya *yang tegas*. Dua H2 atau lebih memecah naskah panjang menjadi bagian kecil yang nyaman dibaca. Alur yang jelas membuat pengunjung betah dan mau membaca sampai akhir.
+
+## Cara Menjaga Keyword Tetap Alami
+
+Audit konten yang baik selalu memeriksa kepadatan kata kunci agar tidak kurang dan tidak berlebih. Rentang aman berada di antara nol koma delapan persen sampai dua koma lima persen. Sebar kata kunci di judul, paragraf pembuka, dan satu subjudul. Hindari menjejalkan kata kunci yang sama di setiap kalimat karena pembaca mudah bosan. Lihat [[Panduan Keyword]] untuk riset lanjutan.
+
+## Readability, Tautan, dan Gambar
+
+Kalimat pendek membuat ide sampai ke pembaca dengan cepat dan tepat. Usahakan setiap kalimat berisi maksimal dua puluh kata agar mudah kamu pahami. Sisipkan satu tautan internal ke artikel lama dan satu tautan eksternal ke sumber tepercaya. Tambahkan satu gambar yang memiliki teks alt jelas untuk pembaca tunanetra.
+
+## Daftar Periksa Sebelum Publish
+
+- Satu H1 yang jelas dengan panjang tiga puluh sampai enam puluh karakter.
+- Minimal dua H2 yang deskriptif dan relevan.
+- Kepadatan kata kunci dalam rentang aman.
+- Tautan internal lewat [panduan menulis](/panduan-menulis) dan tautan eksternal ke [Google](https://developers.google.com/search).
+- Gambar memakai alt seperti ![Ilustrasi proses review artikel](audit-konten.png).
+- Bahasa aktif yang ringkas dan ramah.
+
+## Kesimpulan
+
+Jadikan audit konten sebagai kebiasaan sebelum setiap artikel tayang. Naskah rapi, kata kunci pas, dan tautan lengkap memberi peluang peringkat yang jauh lebih baik. Selamat mencoba dan semoga tulisan kamu makin bersinar!
+`; runAudit(); };
+$('btnFile').onclick=()=>$('file').click();
+$('file').onchange=e=>{ const f=e.target.files[0]; if(!f)return; const r=new FileReader(); r.onload=()=>{
+  if(/\.html?$/i.test(f.name)){   // file HTML (simpanan halaman web) -> ekstrak seperti mode URL
+    const doc=new DOMParser().parseFromString(String(r.result),'text/html');
+    const h1el=doc.querySelector('h1');
+    const t=(doc.querySelector('meta[property="og:title"]')?.content||doc.title||h1el?.textContent||'').trim();
+    const m=(doc.querySelector('meta[name="description"]')?.content||doc.querySelector('meta[property="og:description"]')?.content||'').trim();
+    if(t) $('title').value=t.slice(0,120);
+    if(m) $('meta').value=m.slice(0,300);
+    $('content').value=`<!-- Sumber file: ${f.name} -->\n\n`+htmlToMarkdown(pickArticleRoot(doc), '');
+  } else $('content').value=r.result;
+  runAudit();
+}; r.readAsText(f); };
+// --- Ambil artikel dari URL: fetch HTML -> ekstrak -> markdown -> audit ---
+// Strategi CORS: 1) fetch langsung, 2) proxy allorigins (opsional via tombol), 3) fallback upload file.
+function absUrl(href, base){ try{ return new URL(href, base).href; }catch(e){ return href; } }
+
+// Konversi node HTML artikel menjadi markdown (heading, paragraf, link, gambar, list, quote).
+function htmlToMarkdown(root, base){
+  const out=[];
+  const walk=(node)=>{
+    if(node.nodeType===3){ const t=node.textContent.replace(/\s+/g,' '); if(t.trim()) out.push(t.trim()); return; }
+    if(node.nodeType!==1) return;
+    const tag=node.tagName.toLowerCase();
+    if(['script','style','nav','header','footer','aside','form','button','noscript'].includes(tag)) return;
+    if(/^h[1-6]$/.test(tag)){ const lv=+tag[1]; out.push('\n'+'#'.repeat(lv)+' '+node.textContent.trim()+'\n'); return; }
+    if(tag==='p'||tag==='blockquote'||tag==='li'||tag==='figcaption'){
+      const inner=inlineMd(node, base);
+      if(inner.trim()) out.push((tag==='blockquote'?'> '+inner.trim():tag==='li'?'- '+inner.trim():inner.trim())+'\n');
+      return;
+    }
+    if(tag==='img'){ const alt=node.getAttribute('alt')||''; const src=absUrl(node.getAttribute('src')||'', base); if(src) out.push(`\n![${alt}](${src})\n`); return; }
+    if(tag==='br'){ out.push('\n'); return; }
+    node.childNodes.forEach(walk);
+  };
+  const inlineMd=(el, base)=>{
+    let s='';
+    el.childNodes.forEach(n=>{
+      if(n.nodeType===3){ s+=n.textContent.replace(/\s+/g,' '); }
+      else if(n.nodeType===1){
+        const t=n.tagName.toLowerCase();
+        if(t==='a'){ const href=absUrl(n.getAttribute('href')||'', base); s+=`[${n.textContent.trim()}](${href})`; }
+        else if(t==='img'){ s+=`![${n.getAttribute('alt')||''}](${absUrl(n.getAttribute('src')||'', base)})`; }
+        else if(t==='strong'||t==='b'){ s+=`**${n.textContent.trim()}**`; }
+        else if(t==='em'||t==='i'){ s+=`*${n.textContent.trim()}*`; }
+        else if(t==='code'){ s+=`\`${n.textContent.trim()}\``; }
+        else s+=n.textContent.replace(/\s+/g,' ');
+      }
+    });
+    return s;
+  };
+  root.childNodes.forEach(walk);
+  return out.join('\n').replace(/\n{3,}/g,'\n\n').trim()+'\n';
+}
+
+// Pilih kontainer artikel utama: <article>, <main>, atau blok dengan heading terbanyak.
+function pickArticleRoot(doc){
+  let root=doc.querySelector('article')||doc.querySelector('main');
+  if(root) return root;
+  const cands=[...doc.querySelectorAll('div,section')];
+  let best=doc.body, bestScore=0;
+  cands.forEach(el=>{
+    const h=el.querySelectorAll('h1,h2,h3').length, p=el.querySelectorAll('p').length;
+    const score=h*10+p;
+    if(el.querySelector('article,main')) return;
+    if(score>bestScore){ bestScore=score; best=el; }
+  });
+  return best;
+}
+
+async function fetchAndAuditArticle(rawUrl, viaProxy){
+  const status=$('fetchStatus');
+  let url=(rawUrl||'').trim();
+  if(!url){ status.textContent='Isi URL dulu.'; return; }
+  if(!/^https?:\/\//i.test(url)) url='https://'+url;
+  // Anti mixed-content: di hosting HTTPS (mis. Vercel), browser memblokir fetch ke http://.
+  // Naikkan otomatis ke https:// agar perilaku online sama dengan lokal.
+  if(window.location && window.location.protocol === 'https:' && /^http:\/\//i.test(url)){
+    url = url.replace(/^http:\/\//i, 'https://');
+    status.textContent = 'Halaman dibuka via HTTPS — URL target otomatis dinaikkan ke https:// agar tidak diblokir browser. ';
+  }
+  const target=viaProxy?'https://api.allorigins.win/raw?url='+encodeURIComponent(url):url;
+  status.textContent=(viaProxy?'Mengambil via proxy CORS: ':'Mengambil langsung: ')+url+' …';
+  try{
+    const res=await fetch(target);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const html=await res.text();
+    const doc=new DOMParser().parseFromString(html,'text/html');
+    // Judul: og:title -> <title> -> H1 pertama
+    const h1el=doc.querySelector('h1');
+    const title=(doc.querySelector('meta[property="og:title"]')?.content||doc.title||h1el?.textContent||'').trim();
+    const meta=(doc.querySelector('meta[name="description"]')?.content||doc.querySelector('meta[property="og:description"]')?.content||'').trim();
+    const md=htmlToMarkdown(pickArticleRoot(doc), url);
+    const hCount=(md.match(/^#{1,6}\s/gm)||[]).length, imgCount=(md.match(/!\[/g)||[]).length;
+    $('title').value=title.slice(0,120);
+    if(meta) $('meta').value=meta.slice(0,300);
+    try{ if($('site') && !$('site').value.trim()) $('site').value=new URL(url).origin; }catch(e){}
+    // Simpan sumber sebagai komentar markdown + isi artikel
+    $('content').value=`<!-- Sumber: ${url} -->\n\n`+md;
+    status.textContent=`Berhasil: "${title.slice(0,80)}" — ${hCount} heading, ${imgCount} gambar diekstrak dari ${url}. Menjalankan audit…`;
+    runAudit();
+  }catch(e){
+    status.textContent='Gagal fetch ('+e.message+'). Kemungkinan diblokir CORS. Coba "Ambil via Proxy CORS", atau buka URL di browser → Simpan sebagai HTML → Upload .md/.html di bagian Input.';
+  }
+}
+$('btnFetch').onclick=()=>fetchAndAuditArticle($('url').value,false);
+$('btnFetchProxy').onclick=()=>fetchAndAuditArticle($('url').value,true);
+$('btnCopyClean').onclick=()=>navigator.clipboard.writeText($('cleanOut').textContent).then(()=>alert('Clean Markdown disalin!'));
+$('btnCopyLap').onclick=()=>navigator.clipboard.writeText($('lapOut').textContent).then(()=>alert('Laporan disalin!'));
+$('btnDl').onclick=()=>{ const blob=new Blob([$('cleanOut').textContent],{type:'text/markdown'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='artikel-bersih.md'; a.click(); };
+</script>
+</body>
+</html>
