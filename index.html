@@ -157,6 +157,7 @@ footer{max-width:1100px;margin:auto;padding:0 20px 32px;color:var(--mut);font-si
 <tr><td>Meta &lt;160</td><td>kosong (warning) atau ≤160</td><td>Meta {n} karakter, maks 160</td></tr>
 <tr><td>Density 0.8–2.5%</td><td>0.8–2.5%</td><td>Density {d}% di luar 0.8–2.5%</td></tr>
 <tr><td>Word count ≥300</td><td>≥300 kata</td><td>Hanya {n} kata, minimal 300</td></tr>
+<tr><td>Konten minimal</td><td>≥30 kata terdeteksi</td><td>Artikel kosong / terlalu pendek ({n} kata) — skor dibatasi 35</td></tr>
 <tr><td>Kalimat &gt;20 kata</td><td>≤25% kalimat panjang</td><td>{p}% kalimat &gt;20 kata (maks 25%)</td></tr>
 <tr><td>Passive voice</td><td>≤10% kalimat pasif</td><td>{p}% kalimat pasif (maks 10%)</td></tr>
 <tr><td>Link internal/eksternal</td><td>≥1 tiap jenis (warning)</td><td>Tidak ada link internal / eksternal</td></tr>
@@ -305,8 +306,8 @@ function classifyLinks(content, site, pageUrl){
   return { int, ext, siteHost };
 }
 
-// Escape HTML untuk preview aman.
-function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+// Escape HTML untuk preview aman (termasuk kutip agar aman di atribut href="...").
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 
 // Mini renderer markdown -> HTML (tanpa library, hanya untuk preview).
 function renderPreview(md){
@@ -450,9 +451,11 @@ function auditArticle(content, opts={}){
   add('alt-text', badImg === 0 ? 'pass' : 'fail',
     totalImg === 0 ? 'Tidak ada gambar (netral, lolos).' : (badImg === 0 ? `Semua ${totalImg} gambar ada alt.` : `${badImg} gambar tanpa alt${noAlt.length ? ' di baris ' + noAlt.join(', ') : ''}.`), noAlt);
 
-  // --- 4. Skor 0-100 ---
+  // --- 4. Skor 0-100 (dgn pengaman konten kosong: maks 35, paksa Fail) ---
+  if(wordCount < 30) add('konten-minimal', 'fail', `Artikel kosong / terlalu pendek (${wordCount} kata, minimal 30 untuk dinilai). Pastikan URL termuat benar.`);
   const w = {fail: 0, warning: 0.5, pass: 1};
-  const score = Math.round(rules.reduce((a, r) => a + w[r.status], 0) / rules.length * 100);
+  let score = Math.round(rules.reduce((a, r) => a + w[r.status], 0) / rules.length * 100);
+  if(wordCount < 30) score = Math.min(score, 35);
   const fails = rules.filter(r => r.status === 'fail').length;
   const status = fails > 0 ? 'Fail' : (rules.some(r => r.status === 'warning') ? 'Warning' : 'Pass');
   return {score, status, rules, stats: {wordCount, density, kwCount, sentences: sents.length, pLong, pPas, ext, int, imgs: totalImg, h1, h2}, kasar};
@@ -624,7 +627,7 @@ async function tryFetchText(url, forcePublic){
   if(!forcePublic) chain.push({name:'proxy server', url:'/api/fetch?url='+encodeURIComponent(url)});
   if(!forcePublic) chain.push({name:'langsung', url});
   chain.push({name:'proxy allorigins', url:'https://api.allorigins.win/raw?url='+encodeURIComponent(url)});
-  chain.push({name:'proxy corsproxy.io', url:'https://corsproxy.io/?url='+encodeURIComponent(url)});
+  chain.push({name:'proxy allorigins-get', url:'https://api.allorigins.win/get?url='+encodeURIComponent(url), jsonWrapped:true});
   chain.push({name:'proxy codetabs', url:'https://api.codetabs.com/v1/proxy?quest='+encodeURIComponent(url)});
   const errs = [];
   for(const a of chain){
@@ -635,9 +638,13 @@ async function tryFetchText(url, forcePublic){
       clearTimeout(t);
       if(!res.ok){ errs.push(a.name+': HTTP '+res.status); continue; }
       const ct = res.headers.get('content-type') || '';
-      const txt = await res.text();
-      if(ct.includes('application/json')){  // balasan error JSON (mis. dari /api atau proxy)
-        try{ errs.push(a.name+': '+((JSON.parse(txt)).error || ('HTTP '+res.status))); }
+      let txt = await res.text();
+      if(a.jsonWrapped || ct.includes('application/json')){  // allorigins /get membungkus HTML di {contents}
+        try{
+          const j = JSON.parse(txt);
+          if(j.contents && /<html|<!doctype/i.test(j.contents.slice(0, 3000))) return {ok:true, html:j.contents, via:a.name};
+          errs.push(a.name+': '+((j && j.error) || 'balasan bukan HTML'));
+        }
         catch(e){ errs.push(a.name+': balasan bukan HTML'); }
         continue;
       }
@@ -726,6 +733,9 @@ function buildBulkMarkdown(){
   });
   return lines.join('\n');
 }
+function bulkHasInput(){
+  return !!($('bulkUrls') && $('bulkUrls').value.trim().length);
+}
 async function fetchAndAuditBulk(forcePublic){
   const status=$('fetchStatus');
   const urls=collectBulkUrls();
@@ -743,8 +753,15 @@ async function fetchAndAuditBulk(forcePublic){
     try{
       const data=extractArticleData(r.html, url);
       const siteHost=''; // klasifikasi via pageUrl
-      const report=auditArticle(data.md,{title:data.title, meta:data.meta, keyword, site:$('site')?$('site').value:'', pageUrl:url});
+      // Guard artikel kosong: jangan beri skor 96 untuk konten gagal ekstrak.
+      const wcGuess=(String(data.md||'').replace(/[^A-Za-z0-9\u00C0-\u024F\u4e00-\u9fff]+/g,' ').trim().split(/\s+/).filter(Boolean).length);
       const hCount=(data.md.match(/^#{1,6}\s/gm)||[]).length;
+      if(wcGuess < 30){
+        bulkResults.push({url, status:'error', message:`Artikel kosong / gagal diekstrak (${wcGuess} kata, ${hCount} heading). Pastikan URL publik & memuat <article>/<main>/paragraf. Via ${r.via}.`});
+        renderBulkSummary();
+        continue;
+      }
+      const report=auditArticle(data.md,{title:data.title, meta:data.meta, keyword, site:$('site')?$('site').value:'', pageUrl:url});
       bulkResults.push({url, title:data.title, meta:data.meta, md:data.md, report, status:'ok', via:r.via, heads:hCount});
       renderBulkSummary();
     }catch(e){ bulkResults.push({url, status:'error', message:'Gagal memproses HTML ('+e.message+')'}); renderBulkSummary(); }
@@ -779,25 +796,30 @@ async function fetchAndAuditArticle(rawUrl, forcePublic){
     const meta=(doc.querySelector('meta[name="description"]')?.content||doc.querySelector('meta[property="og:description"]')?.content||'').trim();
     const md=htmlToMarkdown(pickArticleRoot(doc), url);
     const hCount=(md.match(/^#{1,6}\s/gm)||[]).length, imgCount=(md.match(/!\[/g)||[]).length;
+    // Guard single: artikel kosong jangan lolos diam-diam.
+    const wcSingle=(String(md||'').replace(/[^A-Za-z0-9\u00C0-\u024F\u4e00-\u9fff]+/g,' ').trim().split(/\s+/).filter(Boolean).length);
+    if(wcSingle < 30){
+      status.textContent=`Artikel kosong / gagal diekstrak dari ${url} (${wcSingle} kata, via ${r.via}). Pastikan URL publik & memuat artikel. Detail audit di bawah akan menunjukkan fail word-count & h1.`;
+    } else {
+      status.textContent=`Berhasil via ${r.via}: "${title.slice(0,80)}" — ${hCount} heading, ${imgCount} gambar diekstrak dari ${url}. Menjalankan audit…`;
+    }
     $('title').value=title.slice(0,120);
     if(meta) $('meta').value=meta.slice(0,300);
     try{ if($('site') && !$('site').value.trim()) $('site').value=new URL(url).origin; }catch(e){}
     // Simpan sumber sebagai komentar markdown + isi artikel
     $('content').value=`<!-- Sumber: ${url} -->\n\n`+md;
-    status.textContent=`Berhasil via ${r.via}: "${title.slice(0,80)}" — ${hCount} heading, ${imgCount} gambar diekstrak dari ${url}. Menjalankan audit…`;
     runAudit();
   }catch(e){
     status.textContent='Gagal memproses HTML ('+e.message+'). Coba buka URL di browser → Simpan sebagai HTML → Upload file .html di bagian Input.';
   }
 }
 $('btnFetch').onclick=()=>{
-  const urls=collectBulkUrls();
-  if(urls.length>1) fetchAndAuditBulk(false);
+  // 1 link di bulk => 1 kartu bulk; 2 link => 2 kartu. Hanya pakai kolom tunggal bila bulk kosong.
+  if(bulkHasInput()) fetchAndAuditBulk(false);
   else fetchAndAuditArticle($('url').value,false);
 };
 $('btnFetchProxy').onclick=()=>{
-  const urls=collectBulkUrls();
-  if(urls.length>1) fetchAndAuditBulk(true);
+  if(bulkHasInput()) fetchAndAuditBulk(true);
   else fetchAndAuditArticle($('url').value,true);
 };
 $('btnCopyBulk').onclick=()=>{
