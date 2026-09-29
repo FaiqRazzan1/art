@@ -47,23 +47,92 @@ pre{background:#111;color:#e5e5e5;padding:12px;border-radius:8px;overflow:auto;f
   #preview{overflow-wrap:anywhere}
 }
 .small{color:var(--mut);font-size:13px}
+.hero{border:2px solid #111}.hero input{font-size:16px;padding:12px}
+#failSummary{border-left:4px solid var(--fail);background:#fef2f2;padding:10px 12px;border-radius:0 8px 8px 0;margin:10px 0;font-size:14px}
+#failSummary.ok{border-color:var(--ok);background:#f0fdf4}
+.bulk-card{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;background:#fff}
+.bulk-card.fail{border-left:4px solid var(--fail)}.bulk-card.pass{border-left:4px solid var(--ok)}.bulk-card.warn{border-left:4px solid var(--warn)}.bulk-card.err{border-left:4px solid var(--mut)}
+.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-weight:700;font-size:13px}
+.badge.fail{background:#fee2e2;color:#b91c1c}.badge.pass{background:#dcfce7;color:#15803d}.badge.warn{background:#fef3c7;color:#b45309}.badge.err{background:#f3f4f6;color:#6b7280}
+details.card summary{cursor:pointer;font-weight:700;font-size:17px}
+.topbar{position:sticky;top:0;z-index:10;background:#111;color:#fff;padding:10px 20px;display:flex;align-items:center;gap:10px;font-weight:700}
+.topbar .dot{width:10px;height:10px;border-radius:50%;background:#22c55e;display:inline-block}
+.topbar .tag{margin-left:auto;font-size:12px;background:#22c55e;color:#06290f;padding:3px 10px;border-radius:999px;font-weight:700}
+.hero{background:linear-gradient(135deg,#fff 60%,#ecfdf5 100%)}
+.steps{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:12px}
+.step{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:13px}
+.step b{display:block;font-size:14px;margin-bottom:2px}
+.chip{display:inline-block;background:#f3f4f6;border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:12px;margin:2px 4px 0 0}
+.demo{opacity:.92}
+footer{max-width:1100px;margin:auto;padding:0 20px 32px;color:var(--mut);font-size:13px}
+@media(max-width:800px){.steps{grid-template-columns:1fr}.topbar{padding:10px 12px}}
 </style>
 </head>
 <body>
+<div class="topbar"><span class="dot"></span> SEO Content Checker <span class="tag">BULK • MAKS 10 LINK</span></div>
 <header>
 <h1>SEO Content Checker</h1>
-<p class="small">Tempel artikel (teks / markdown / .md) <b>atau tempel URL artikel web lain</b> → cek H1/H2, kebersihan syntax <code>* &gt; #</code>, SEO dasar → export sebagai note Obsidian yang bersih. 100% client-side, tanpa backend.</p>
+<p class="small">Tempel <b>1–10 link artikel</b> → otomatis diambil + diaudit (H1/H2, SEO dasar) → tiap <b>problem jadi 1 kartu sendiri</b> + export note Obsidian yang bersih.</p>
+<div class="steps">
+<div class="step"><b>1️⃣ Tempel link</b>1–10 URL, 1 baris 1 link. Bisa juga 1 link saja.</div>
+<div class="step"><b>2️⃣ Audit otomatis</b>Skor 0–100 + status Pass / Warning / Fail per artikel.</div>
+<div class="step"><b>3️⃣ Perbaiki per problem</b>1 kartu = 1 masalah + baris + tombol Lihat artikel.</div>
+</div>
 </header>
 <main>
+<div class="card hero">
+<h2>Cek Artikel via Link (Bulk, maks 10)</h2>
+<p class="small">Tempel <b>1–10 link</b>, 1 baris 1 link → otomatis diambil + diaudit satu per satu.<br><span class="chip">✅ lolos</span><span class="chip">❌ fail</span><span class="chip">⚠️ warning</span><span class="chip">1 kartu = 1 problem</span></p>
+<label for="bulkUrls">Daftar URL (1 per baris, maks 10)</label>
+<textarea id="bulkUrls" rows="4" style="min-height:96px" placeholder="https://contoh.com/artikel-1&#10;https://contoh.com/artikel-2" inputmode="url"></textarea>
+<details style="margin-top:8px"><summary class="small">Punya 1 link saja? pakai kolom tunggal / lihat contoh</summary>
+<label for="url">URL artikel</label>
+<input id="url" placeholder="https://contoh.com/artikel" inputmode="url" value="https://baby.bcb.dpdns.org/newborn-baby-parenting-tips.html">
+</details>
+<div>
+<button id="btnFetch">Ambil &amp; Audit Artikel</button>
+<button id="btnContohBulk" class="ghost" style="font-size:13px;padding:8px 10px;min-height:36px">Isi contoh 2 link</button>
+<button id="btnFetchProxy" class="ghost" style="font-size:13px;padding:8px 10px;min-height:36px">Proxy publik saja</button>
+<button id="btnCopyBulk" class="ghost" style="font-size:13px;padding:8px 10px;min-height:36px">Salin Ringkasan</button>
+</div>
+<div id="fetchStatus" class="small" aria-live="polite">Belum mengambil URL — klik <b>Isi contoh 2 link</b> untuk coba.</div>
+<div id="bulkSummary" class="small" aria-live="polite" style="margin-top:8px"><b>Contoh tampilan hasil (demo):</b><div class="bulk-card fail demo">❌ <b>Kotak Artikel 1: Panduan Newborn Baby…</b> <span class="badge fail">68/100 · Fail</span><br><div class="small" style="margin:6px 0"><b>Problem Artikel 1 (2):</b></div><div style="border-top:1px solid var(--line);padding:6px 0">❌ <b>1. h1-tepat-1</b><br><span>H1 harus tepat 1 (ditemukan 0) · baris 1</span></div><div style="border-top:1px solid var(--line);padding:6px 0">❌ <b>2. word-count</b><br><span>Hanya 120 kata, minimal 300</span></div></div><div class="bulk-card pass demo">✅ <b>Kotak Artikel 2: Contoh Artikel Lolos</b> <span class="badge pass">92/100 · Pass</span><br><div class="small" style="margin-top:6px">Tidak ada fail — siap publish.</div></div></div>
+</div>
+
 <div class="card">
-<h2>1. Input</h2>
+<h2>Skor &amp; Hasil — Fail saja <span class="small">(detail artikel terpilih)</span></h2>
+<div id="score" aria-live="polite"><b>Skor: — /100</b> <span class="small">(hasil detail muncul di sini setelah audit)</span></div>
+<div id="failSummary" class="small">Tempel link di atas → klik <b>Ambil &amp; Audit</b>. Hanya <b>fail</b> yang ditampilkan di sini. Klik <b>Lihat artikel</b> di kartu problem untuk bedah detailnya.</div>
+<div class="scroll"><table id="tabelHasil"><thead><tr><th>Aturan</th><th>Status</th><th>Pesan</th><th>Baris</th></tr></thead><tbody><tr><td colspan="4" class="small">Jalankan audit dulu.</td></tr></tbody></table></div>
+<h3>Highlight baris bermasalah</h3>
+<pre id="highlight">—</pre>
+</div>
+
+<div class="grid2">
+<div class="card">
+<h2>Preview</h2>
+<div id="preview" class="small">Preview muncul di sini.</div>
+</div>
+<div class="card">
+<h2>Export Obsidian</h2>
+<p class="small">Fail-only callout + frontmatter YAML. Tanpa HTML kotor.</p>
+<button id="btnCopyClean">Copy Clean Markdown</button>
+<button id="btnDl" class="ghost">Download .md</button>
+<button id="btnCopyLap" class="ghost">Copy Laporan Audit</button>
+<h3>Clean Markdown</h3><pre id="cleanOut">—</pre>
+<h3>Laporan Audit (markdown)</h3><pre id="lapOut">—</pre>
+</div>
+</div>
+
+<details class="card">
+<summary>Input manual (opsional)</summary>
 <div class="row">
 <div><label for="title">Judul (H1 / 30–60 karakter)</label><input id="title" placeholder="Contoh: Panduan SEO On-Page untuk Blogger Indonesia"></div>
 <div><label for="meta">Meta description (&lt;160 karakter, opsional)</label><input id="meta" placeholder="Ringkasan singkat artikel…"></div>
 <div><label for="keyword">Keyword fokus</label><input id="keyword" placeholder="contoh: seo on-page"></div>
 </div>
 <div class="row" style="margin-top:12px">
-<div style="grid-column:1/-1"><label for="site">Domain situs (opsional — untuk bedakan link internal vs eksternal; otomatis terisi saat ambil via URL)</label><input id="site" placeholder="https://website-anda.com"></div>
+<div style="grid-column:1/-1"><label for="site">Domain situs (opsional — otomatis terisi saat ambil via URL)</label><input id="site" placeholder="https://website-anda.com"></div>
 </div>
 <label for="content">Artikel (markdown)</label>
 <textarea id="content" placeholder="# Judul&#10;&#10;## Subjudul 1&#10;Isi…"></textarea>
@@ -73,46 +142,10 @@ pre{background:#111;color:#e5e5e5;padding:12px;border-radius:8px;overflow:auto;f
 <input type="file" id="file" accept=".md,.markdown,.txt,.html" hidden>
 <button id="btnContoh" class="ghost">Muat contoh ideal</button>
 </div>
-</div>
+</details>
 
-<div class="card">
-<h2>1b. Ambil artikel dari URL web lain</h2>
-<p class="small">Tempel link artikel (contoh: <code>https://baby.bcb.dpdns.org/newborn-baby-parenting-tips.html</code>) → tool otomatis mencoba semua jalur: proxy server → langsung → 3 proxy publik, lalu mengekstrak judul/meta/isi jadi markdown dan langsung diaudit. Situs di belakang Cloudflare tanpa CORS (seperti contoh di atas) tetap bisa diambil via proxy server.</p>
-<label for="url">URL artikel</label>
-<input id="url" placeholder="https://contoh.com/artikel" inputmode="url">
-<div>
-<button id="btnFetch">Ambil &amp; Audit Artikel</button>
-<button id="btnFetchProxy" class="ghost">Ambil via Proxy Publik Saja</button>
-</div>
-<div id="fetchStatus" class="small" aria-live="polite">Belum mengambil URL.</div>
-</div>
-
-<div class="card">
-<h2>2. Skor &amp; Hasil</h2>
-<div id="score" aria-live="polite">Belum diaudit.</div>
-<div class="scroll"><table id="tabelHasil"><thead><tr><th>Aturan</th><th>Status</th><th>Pesan</th><th>Baris</th></tr></thead><tbody><tr><td colspan="4" class="small">Jalankan audit dulu.</td></tr></tbody></table></div>
-<h3>Highlight baris bermasalah</h3>
-<pre id="highlight">—</pre>
-</div>
-
-<div class="grid2">
-<div class="card">
-<h2>3. Preview HTML</h2>
-<div id="preview" class="small">Preview muncul di sini.</div>
-</div>
-<div class="card">
-<h2>4. Export Obsidian</h2>
-<p class="small">Output valid Obsidian Flavored Markdown: frontmatter YAML + wikilink opsional + callout issue. Tanpa HTML kotor.</p>
-<button id="btnCopyClean">Copy Clean Markdown</button>
-<button id="btnDl" class="ghost">Download .md</button>
-<button id="btnCopyLap" class="ghost">Copy Laporan Audit</button>
-<h3>Clean Markdown</h3><pre id="cleanOut">—</pre>
-<h3>Laporan Audit (markdown)</h3><pre id="lapOut">—</pre>
-</div>
-</div>
-
-<div class="card">
-<h2>5. Tabel Aturan</h2>
+<details class="card">
+<summary>Referensi aturan &amp; regex (opsional)</summary>
 <div class="scroll">
 <table>
 <thead><tr><th>Aturan</th><th>Pass Criteria</th><th>Fail Message</th></tr></thead>
@@ -133,10 +166,11 @@ pre{background:#111;color:#e5e5e5;padding:12px;border-radius:8px;overflow:auto;f
 </tbody>
 </table>
 </div>
-<h2>6. Regex checker (ditampilkan + dijelaskan)</h2>
+<h2>Regex checker (ditampilkan + dijelaskan)</h2>
 <pre id="regexList">Lihat kode sumber auditArticle() — semua regex didokumentasikan di komentar.</pre>
-</div>
+</details>
 </main>
+<footer>SEO Content Checker • bulk 10 link • 1 kartu = 1 problem • export Obsidian <code>frontmatter + &gt; [!danger]</code> • 100% client-side.</footer>
 
 <script>
 /* ============================================================
@@ -439,14 +473,17 @@ function buildCleanNote(title,keyword,content,report){
   const date=new Date().toISOString().slice(0,10);
   const tags=['artikel','draft'];
   if(keyword) tags.push('keyword-'+keyword.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,''));
-  const issues=report.rules.filter(r=>r.status!=='pass')
-    .map(r=>`> [!warning] **${r.id}** — ${r.message}`).join('\n');
-  return `---\ntitle: "${title.replace(/"/g,"'")}"\ndate: ${date}\ntags:\n${tags.map(t=>'  - '+t).join('\n')}\nkeyword: "${keyword}"\nscore: ${report.score}\nstatus: ${report.status}\n---\n\n${issues?issues+'\n\n':''}${toCleanMarkdown(content)}`;
+  const fails=report.rules.filter(r=>r.status==='fail');
+  const warns=report.rules.filter(r=>r.status==='warning');
+  const head=fails.length?`> [!danger]- Skor ${report.score}/100 — ${fails.length} gagal perlu diperbaiki\n`+fails.map(r=>`> - **${r.id}** — ${r.message}`).join('\n'):`> [!success] Skor ${report.score}/100 — Semua lolos, tidak ada fail.`;
+  const wblk=warns.length?`\n\n> [!warning]- ${warns.length} warning (opsional)\n`+warns.map(r=>`> - **${r.id}** — ${r.message}`).join('\n'):'';
+  return `---\ntitle: "${title.replace(/"/g,"'")}"\ndate: ${date}\ntags:\n${tags.map(t=>'  - '+t).join('\n')}\nkeyword: "${keyword}"\nscore: ${report.score}\nstatus: ${report.status}\n---\n\n${head}${wblk}\n\n${toCleanMarkdown(content)}`;
 }
 
 function buildAuditReport(title,report){
-  const rows=report.rules.map(r=>`| ${r.id} | ${r.status} | ${r.message} |`).join('\n');
-  return `# Laporan Audit SEO — ${title||'(tanpa judul)'}\n\n**Skor: ${report.score}/100 — ${report.status}**\n\n| Aturan | Status | Pesan |\n|---|---|---|\n${rows}\n\n- Kata: ${report.stats.wordCount}, Kalimat: ${report.stats.sentences}, Density: ${report.stats.density}%\n- H1: ${report.stats.h1}, H2: ${report.stats.h2}, Gambar: ${report.stats.imgs}\n`;
+  const fails=report.rules.filter(r=>r.status==='fail');
+  const rows=(fails.length?fails:report.rules).map(r=>`| ${r.id} | ${r.status} | ${r.message} |`).join('\n');
+  return `# Laporan Audit SEO — ${title||'(tanpa judul)'}\n\n**Skor: ${report.score}/100 — ${report.status}** (${fails.length} fail)\n\n| Aturan | Status | Pesan |\n|---|---|---|\n${rows}\n\n- Kata: ${report.stats.wordCount}, Kalimat: ${report.stats.sentences}, Density: ${report.stats.density}%\n- H1: ${report.stats.h1}, H2: ${report.stats.h2}, Gambar: ${report.stats.imgs}\n`;
 }
 
 // --- Wiring UI ---
@@ -456,13 +493,22 @@ function runAudit(){
   const title=$('title').value, meta=$('meta').value, keyword=$('keyword').value, content=$('content').value;
   const site=$('site') ? $('site').value : '', pageUrl=$('url') ? $('url').value : '';
   lastReport=auditArticle(content,{title,meta,keyword,site,pageUrl});
-  $('score').innerHTML=`<b>Skor: ${lastReport.score}/100 — <span class="${lastReport.status==='Pass'?'pass':lastReport.status==='Warning'?'warn':'fail'}">${lastReport.status}</span></b>`;
-  $('tabelHasil').querySelector('tbody').innerHTML=lastReport.rules.map(r=>
-    `<tr><td>${r.id}</td><td class="${r.status==='pass'?'pass':r.status==='warning'?'warn':'fail'}">${r.status}</td><td>${esc(r.message)}</td><td>${r.lines.join(', ')||'—'}</td></tr>`).join('');
-  // highlight
-  const bad=new Set(); lastReport.rules.forEach(r=>r.lines.forEach(n=>bad.add(n)));
+  const fails=lastReport.rules.filter(r=>r.status==='fail');
+  const warns=lastReport.rules.filter(r=>r.status==='warning');
+  $('score').innerHTML=`<b>Skor: ${lastReport.score}/100 — <span class="${lastReport.status==='Pass'?'pass':lastReport.status==='Warning'?'warn':'fail'}">${lastReport.status}</span></b> <span class="small">(${fails.length} fail${warns.length?`, ${warns.length} warning`:''})</span>`;
+  const fs=$('failSummary');
+  if(fs){
+    if(!fails.length){ fs.className='ok'; fs.id='failSummary'; fs.innerHTML=`✅ <b>Lolos!</b> Tidak ada fail. Skor ${lastReport.score}/100.`; }
+    else { fs.className=''; fs.id='failSummary'; fs.innerHTML=`❌ <b>${fails.length} gagal perlu diperbaiki:</b><br>• `+fails.map(r=>`<b>${r.id}</b> — ${esc(r.message)}`).join('<br>• '); }
+  }
+  const rows=fails.length?fails:lastReport.rules.filter(r=>r.status!=='pass');
+  $('tabelHasil').querySelector('tbody').innerHTML=(rows.length?rows.map(r=>
+    `<tr><td>${r.id}</td><td class="${r.status==='pass'?'pass':r.status==='warning'?'warn':'fail'}">${r.status}</td><td>${esc(r.message)}</td><td>${r.lines.join(', ')||'—'}</td></tr>`).join(''):`<tr><td colspan="4" class="small">✅ Tidak ada fail — semua aturan lolos.</td></tr>`)
+    + (fails.length&&warns.length?`<tr><td colspan="4" class="small"><details><summary>Lihat ${warns.length} warning (opsional)</summary>${warns.map(r=>`• <b>${r.id}</b> — ${esc(r.message)}`).join('<br>')}</details></td></tr>`:'');
+  // highlight: hanya baris fail (merah), warning diabaikan agar fokus
+  const badFail=new Set(); fails.forEach(r=>r.lines.forEach(n=>badFail.add(n)));
   $('highlight').innerHTML=$('content').value.split('\n').map((ln,i)=>{
-    const n=i+1; const cls=bad.has(n)?(lastReport.rules.some(r=>r.status==='fail'&&r.lines.includes(n))?'err-line':'issue-line'):'';
+    const n=i+1; const cls=badFail.has(n)?'err-line':'';
     return `<span class="${cls}">${String(n).padStart(3,' ')}│ ${esc(ln)}</span>`;
   }).join('\n');
   $('preview').innerHTML=renderPreview(content)||'<span class="small">Kosong.</span>';
@@ -604,6 +650,111 @@ async function tryFetchText(url, forcePublic){
   return {ok:false, errs};
 }
 
+let bulkResults=[];
+function normUrl(u){
+  let url=(u||'').trim();
+  if(!url) return '';
+  if(!/^https?:\/\//i.test(url)) url='https://'+url;
+  if(window.location && window.location.protocol==='https:' && /^http:\/\//i.test(url)) url=url.replace(/^http:\/\//i,'https://');
+  return url;
+}
+function collectBulkUrls(){
+  const t=$('bulkUrls')?$('bulkUrls').value:'';
+  let list=t.split('\n').map(s=>s.trim()).filter(Boolean);
+  if(!list.length && $('url') && $('url').value.trim()) list=[$('url').value.trim()];
+  return [...new Set(list)].slice(0,10);
+}
+function extractArticleData(html, url){
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const h1el=doc.querySelector('h1');
+  const title=(doc.querySelector('meta[property="og:title"]')?.content||doc.title||h1el?.textContent||'').trim();
+  const meta=(doc.querySelector('meta[name="description"]')?.content||doc.querySelector('meta[property="og:description"]')?.content||'').trim();
+  const md=htmlToMarkdown(pickArticleRoot(doc), url);
+  return {title, meta, md};
+}
+function loadToEditor(url, data, keyword){
+  $('title').value=(data.title||'').slice(0,120);
+  if(data.meta) $('meta').value=data.meta.slice(0,300);
+  try{ if($('site')) $('site').value=new URL(url).origin; }catch(e){}
+  if(keyword) $('keyword').value=keyword;
+  $('content').value=`<!-- Sumber: ${url} -->\n\n`+data.md;
+  runAudit();
+}
+function renderBulkSummary(){
+  const box=$('bulkSummary');
+  if(!box) return;
+  if(!bulkResults.length){ box.textContent='Belum ada hasil bulk.'; return; }
+  const ok=bulkResults.filter(r=>r.status==='ok'&&r.report.status==='Pass').length;
+  const fail=bulkResults.filter(r=>r.status==='ok'&&r.report.status==='Fail').length;
+  const warn=bulkResults.filter(r=>r.status==='ok'&&r.report.status==='Warning').length;
+  const err=bulkResults.filter(r=>r.status==='error').length;
+  const scores=bulkResults.filter(r=>r.status==='ok').map(r=>r.report.score);
+  const avg=scores.length?Math.round(scores.reduce((a,b)=>a+b,0)/scores.length):0;
+  box.innerHTML=`<b>Ringkasan ${bulkResults.length} artikel:</b> ✅ ${ok} lolos · ❌ ${fail} gagal · ⚠️ ${warn} peringatan · ⛔ ${err} error · rata-rata <b>${avg}/100</b>`
+    + bulkResults.map((r,i)=>{
+      if(r.status==='error') return `<div class="bulk-card err"><span class="badge err">ERROR</span> <b>Kotak Artikel ${i+1}</b><br><a href="${esc(r.url)}" target="_blank" rel="noopener" class="small">${esc(r.url)}</a><br><span>${esc(r.message)}</span></div>`;
+      const st=r.report.status, cls=st==='Pass'?'pass':st==='Warning'?'warn':'fail';
+      const icon=st==='Pass'?'✅':st==='Warning'?'⚠️':'❌';
+      const fails=r.report.rules.filter(x=>x.status==='fail');
+      const plist=fails.length?`<div class="small" style="margin:6px 0"><b>Problem Artikel ${i+1} (${fails.length}):</b></div>`+fails.map((f,k)=>{
+        const ln=(f.lines&&f.lines.length)?` · baris ${f.lines.slice(0,5).join(', ')}`:'';
+        return `<div style="border-top:1px solid var(--line);padding:6px 0">❌ <b>${k+1}. ${f.id}</b><br><span>${esc(f.message)}${esc(ln)}</span></div>`;
+      }).join(''):`<div class="small" style="margin-top:6px">Tidak ada fail — siap publish.</div>`;
+      return `<div class="bulk-card ${cls}">${icon} <b>Kotak Artikel ${i+1}: ${esc(r.title.slice(0,80)||r.url)}</b> <span class="badge ${cls}">${r.report.score}/100 · ${st}</span><br><a href="${esc(r.url)}" target="_blank" rel="noopener" class="small">${esc(r.url)}</a>${plist}<br><button class="ghost" style="font-size:13px;min-height:36px;padding:6px 10px" onclick="viewBulk(${i})">Bedah Artikel ${i+1}</button></div>`;
+    }).join('');
+}
+function viewBulk(i){
+  const r=bulkResults[i];
+  if(!r||r.status!=='ok') return;
+  if($('url')) $('url').value=r.url;
+  loadToEditor(r.url, {title:r.title, meta:r.meta, md:r.md}, $('keyword')?$('keyword').value:'');
+  $('score').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function buildBulkMarkdown(){
+  const lines=[`# Ringkasan Audit Bulk — ${bulkResults.length} artikel`, ''];
+  bulkResults.forEach((r,i)=>{
+    if(r.status==='error'){ lines.push(`## Kotak Artikel ${i+1} (ERROR)`, '', `URL: ${r.url}`, '', `> [!failure] ${r.message}`, ''); return; }
+    const fails=r.report.rules.filter(x=>x.status==='fail');
+    lines.push(`## Kotak Artikel ${i+1}: ${r.title||r.url}`, '', `URL: ${r.url}`, `Skor: **${r.report.score}/100 — ${r.report.status}**`, '');
+    if(!fails.length){ lines.push('> [!success] Tidak ada fail — siap publish.', ''); return; }
+    lines.push(`> [!danger]- Problem Artikel ${i+1} (${fails.length})`);
+    fails.forEach((x,k)=>{
+      const ln=(x.lines&&x.lines.length)?` (baris ${x.lines.slice(0,5).join(', ')})`:'';
+      lines.push(`> ${k+1}. **${x.id}** — ${x.message}${ln}`);
+    });
+    lines.push('');
+  });
+  return lines.join('\n');
+}
+async function fetchAndAuditBulk(forcePublic){
+  const status=$('fetchStatus');
+  const urls=collectBulkUrls();
+  if(!urls.length){ status.textContent='Tempel minimal 1 link dulu (maks 10, 1 per baris).'; return; }
+  bulkResults=[];
+  renderBulkSummary();
+  const keyword=$('keyword')?$('keyword').value:'';
+  let n=0;
+  for(const raw of urls){
+    n++;
+    const url=normUrl(raw);
+    status.textContent=`Memproses ${n}/${urls.length}: ${url} …`;
+    const r=await tryFetchText(url, forcePublic);
+    if(!r.ok){ bulkResults.push({url, status:'error', message:r.errs.join(' | ').slice(0,300)}); renderBulkSummary(); continue; }
+    try{
+      const data=extractArticleData(r.html, url);
+      const siteHost=''; // klasifikasi via pageUrl
+      const report=auditArticle(data.md,{title:data.title, meta:data.meta, keyword, site:$('site')?$('site').value:'', pageUrl:url});
+      const hCount=(data.md.match(/^#{1,6}\s/gm)||[]).length;
+      bulkResults.push({url, title:data.title, meta:data.meta, md:data.md, report, status:'ok', via:r.via, heads:hCount});
+      renderBulkSummary();
+    }catch(e){ bulkResults.push({url, status:'error', message:'Gagal memproses HTML ('+e.message+')'}); renderBulkSummary(); }
+  }
+  const firstOk=bulkResults.find(r=>r.status==='ok');
+  if(firstOk) loadToEditor(firstOk.url, firstOk, keyword);
+  const okN=bulkResults.filter(r=>r.status==='ok').length;
+  status.textContent=`Selesai: ${okN}/${urls.length} berhasil diproses. Klik "Lihat detail" untuk bedah tiap artikel.`;
+  renderBulkSummary();
+}
 async function fetchAndAuditArticle(rawUrl, forcePublic){
   const status=$('fetchStatus');
   let url=(rawUrl||'').trim();
@@ -639,8 +790,24 @@ async function fetchAndAuditArticle(rawUrl, forcePublic){
     status.textContent='Gagal memproses HTML ('+e.message+'). Coba buka URL di browser → Simpan sebagai HTML → Upload file .html di bagian Input.';
   }
 }
-$('btnFetch').onclick=()=>fetchAndAuditArticle($('url').value,false);
-$('btnFetchProxy').onclick=()=>fetchAndAuditArticle($('url').value,true);
+$('btnFetch').onclick=()=>{
+  const urls=collectBulkUrls();
+  if(urls.length>1) fetchAndAuditBulk(false);
+  else fetchAndAuditArticle($('url').value,false);
+};
+$('btnFetchProxy').onclick=()=>{
+  const urls=collectBulkUrls();
+  if(urls.length>1) fetchAndAuditBulk(true);
+  else fetchAndAuditArticle($('url').value,true);
+};
+$('btnCopyBulk').onclick=()=>{
+  if(!bulkResults.length){ alert('Belum ada hasil bulk.'); return; }
+  navigator.clipboard.writeText(buildBulkMarkdown()).then(()=>alert('Ringkasan bulk disalin!'));
+};
+$('btnContohBulk').onclick=()=>{
+  $('bulkUrls').value='https://baby.bcb.dpdns.org/newborn-baby-parenting-tips.html\nhttps://example.com/artikel-contoh';
+  $('fetchStatus').textContent='Contoh 2 link terisi — klik Ambil & Audit.';
+};
 $('btnCopyClean').onclick=()=>navigator.clipboard.writeText($('cleanOut').textContent).then(()=>alert('Clean Markdown disalin!'));
 $('btnCopyLap').onclick=()=>navigator.clipboard.writeText($('lapOut').textContent).then(()=>alert('Laporan disalin!'));
 $('btnDl').onclick=()=>{ const blob=new Blob([$('cleanOut').textContent],{type:'text/markdown'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='artikel-bersih.md'; a.click(); };
